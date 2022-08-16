@@ -1,130 +1,172 @@
+#  %%
 import re
-import statistics
 import collections
+import statistics
 import pandas as pd
+import matplotlib.pyplot as plt
+import math
 
 
-with open("NC_009641.fasta") as infile:
-    next(infile)
-    sequence = infile.read()
-sequence = sequence.replace("\n", "")
-stop_positions = [match.start() for match in re.finditer("TAA|TAG|TGA", sequence)]
-stop_positions_by_frame = [[], [], []]
-for i in stop_positions:
-    stop_positions_by_frame[i % 3].append(i)
-upstream_ends = [i + 3 for frame in stop_positions_by_frame for i in frame[:-1]]
-downstream_ends = [i for frame in stop_positions_by_frame for i in frame[1:]]
-dna_sequences = [sequence[i:j] for i, j in zip(upstream_ends, downstream_ends)]
-codon_dict = {
-    "AAA": "K",
-    "AAC": "N",
-    "AAG": "K",
-    "AAT": "N",
-    "ACA": "T",
-    "ACC": "T",
-    "ACG": "T",
-    "ACT": "T",
-    "AGA": "R",
-    "AGC": "S",
-    "AGG": "R",
-    "AGT": "S",
-    "ATA": "I",
-    "ATC": "I",
-    "ATG": "M",
-    "ATT": "I",
-    "CAA": "Q",
-    "CAC": "H",
-    "CAG": "Q",
-    "CAT": "H",
-    "CCA": "P",
-    "CCC": "P",
-    "CCG": "P",
-    "CCT": "P",
-    "CGA": "R",
-    "CGC": "R",
-    "CGG": "R",
-    "CGT": "R",
-    "CTA": "L",
-    "CTC": "L",
-    "CTG": "L",
-    "CTT": "L",
-    "GAA": "E",
-    "GAC": "D",
-    "GAG": "E",
-    "GAT": "D",
-    "GCA": "A",
-    "GCC": "A",
-    "GCG": "A",
-    "GCT": "A",
-    "GGA": "G",
-    "GGC": "G",
-    "GGG": "G",
-    "GGT": "G",
-    "GTA": "V",
-    "GTC": "V",
-    "GTG": "V",
-    "GTT": "V",
-    "TAA": "_",
-    "TAC": "Y",
-    "TAG": "_",
-    "TAT": "Y",
-    "TCA": "S",
-    "TCC": "S",
-    "TCG": "S",
-    "TCT": "S",
-    "TGA": "_",
-    "TGC": "C",
-    "TGG": "W",
-    "TGT": "C",
-    "TTA": "L",
-    "TTC": "F",
-    "TTG": "L",
-    "TTT": "F",
-}
-amino_sequences = []
-for seq in dna_sequences:
-    codons = re.findall("...", seq)
-    amino_sequences.append("".join([codon_dict[c] for c in codons]))
-lengths = [j - i for i, j in zip(upstream_ends, downstream_ends)]
-codons = []
-for i in range(3):
-    codons += re.findall("...", sequence[i:])
-codon_counter = collections.Counter(codons)
-len_codons = len(codons)
-for key in codon_counter.keys():
-    codon_counter[key] /= len(codons)
-codon_frequency_total = statistics.mean([codon_counter[codon] for codon in codons])
-codon_frequencies = []
-for seq in dna_sequences:
-    codons = re.findall("...", seq)
-    codon_frequencies.append([codon_counter[codon] for codon in codons])
-mean_codon_frequencies = [
-    statistics.mean(freqs) if len(freqs) > 0 else 0 for freqs in codon_frequencies
-]
-stdev_codon_frequencies = [
-    statistics.stdev(freqs) if len(freqs) > 1 else 0 for freqs in codon_frequencies
-]
+def read_fasta(filepath):
+    with open(filepath) as infile:
+        next(infile)
+        sequence = infile.read()
+    return sequence.replace("\n", "")
 
-delta_from_mean_codon_frequencies = [
-    abs(codon_frequency_total - i) for i in mean_codon_frequencies
-]
 
-upstream_end_neighborhood_sequences = [sequence[i - 40 : i + 40] for i in upstream_ends]
+def findall_indices(regex, sequence):
+    return [match.start() for match in re.finditer(regex, sequence)]
 
-df = pd.DataFrame(
-    {
-        "upstream_end": upstream_ends,
-        "downstream_end": downstream_ends,
-        "upstream_end_neighborhood_sequence": upstream_end_neighborhood_sequences,
-        "length": lengths,
-        "mean_codon_frequency": mean_codon_frequencies,
-        "stdev_codon_frequency": stdev_codon_frequencies,
-        "delta_codon_frequency": delta_from_mean_codon_frequencies,
-        "dna_sequence": dna_sequences,
-        "amino_sequence": amino_sequences,
+
+def split_by_modulo(int_list, modulo):
+    split_list = [[] for _ in range(modulo)]
+    for i in int_list:
+        split_list[i % modulo].append(i)
+    return split_list
+
+
+def translate_dna(sequence):
+    codon_dict = {
+        "AAA": "K",
+        "AAC": "N",
+        "AAG": "K",
+        "AAT": "N",
+        "ACA": "T",
+        "ACC": "T",
+        "ACG": "T",
+        "ACT": "T",
+        "AGA": "R",
+        "AGC": "S",
+        "AGG": "R",
+        "AGT": "S",
+        "ATA": "I",
+        "ATC": "I",
+        "ATG": "M",
+        "ATT": "I",
+        "CAA": "Q",
+        "CAC": "H",
+        "CAG": "Q",
+        "CAT": "H",
+        "CCA": "P",
+        "CCC": "P",
+        "CCG": "P",
+        "CCT": "P",
+        "CGA": "R",
+        "CGC": "R",
+        "CGG": "R",
+        "CGT": "R",
+        "CTA": "L",
+        "CTC": "L",
+        "CTG": "L",
+        "CTT": "L",
+        "GAA": "E",
+        "GAC": "D",
+        "GAG": "E",
+        "GAT": "D",
+        "GCA": "A",
+        "GCC": "A",
+        "GCG": "A",
+        "GCT": "A",
+        "GGA": "G",
+        "GGC": "G",
+        "GGG": "G",
+        "GGT": "G",
+        "GTA": "V",
+        "GTC": "V",
+        "GTG": "V",
+        "GTT": "V",
+        "TAA": "_",
+        "TAC": "Y",
+        "TAG": "_",
+        "TAT": "Y",
+        "TCA": "S",
+        "TCC": "S",
+        "TCG": "S",
+        "TCT": "S",
+        "TGA": "_",
+        "TGC": "C",
+        "TGG": "W",
+        "TGT": "C",
+        "TTA": "L",
+        "TTC": "F",
+        "TTG": "L",
+        "TTT": "F",
     }
-)
+    codons = re.findall("...", sequence)
+    return "".join([codon_dict[c] for c in codons])
 
-df.to_csv("orf_table.tsv", sep="\t", index=False)
 
-df = pd.read_csv("orf_table.tsv", sep="\t")
+def findall(regex, sequence, overlap=False):
+    if overlap:
+        return re.findall(f"(?=({regex}))", sequence)
+    else:
+        return re.findall(f"{regex}", sequence)
+
+
+def sequences_to_fasta(filepath, sequences):
+    with open(filepath, "w") as outfile:
+        for i, sequence in enumerate(sequences):
+            outfile.write(f">{i}\n")
+            outfile.write(f"{sequence}\n")
+
+
+def relative_frequencies(outcome_list):
+    number_of_outcomes = len(outcome_list)
+    outcome_counter = collections.Counter(outcome_list)
+    return {k: v / number_of_outcomes for k, v in outcome_counter.items()}
+
+
+def mean_frequency(frequency_dict, key_list):
+    frequencies = [frequency_dict[key] for key in key_list]
+    return statistics.mean(frequencies)
+
+
+def reverse_complement(sequence):
+    trans_dict = str.maketrans("ATGC", "TACG")
+    return sequence.translate(trans_dict)[::-1]
+
+
+def sequence_neighborhood(sequence, position, offset):
+    return sequence[position - offset : position + offset]
+
+
+def build_orf_table(filepath, complement=False):
+    sequence = read_fasta(filepath)
+    if complement:
+        sequence = reverse_complement(sequence)
+    stop_codon_positions = findall_indices("TAA|TAG|TGA", sequence)
+    stop_codon_positions_by_frame = split_by_modulo(stop_codon_positions, 3)
+    orf_table = pd.DataFrame()
+    orf_table["upstream_end"] = [
+        i + 3 for frame in stop_codon_positions_by_frame for i in frame[:-1]
+    ]
+    orf_table["downstream_end"] = [
+        i for frame in stop_codon_positions_by_frame for i in frame[1:]
+    ]
+    orf_table["dna_sequence"] = [
+        sequence[i:j] for i, j in zip(orf_table.upstream_end, orf_table.downstream_end)
+    ]
+    orf_table["amino_sequence"] = [translate_dna(dna) for dna in orf_table.dna_sequence]
+    orf_table["length"] = list(map(len, orf_table.dna_sequence))
+    orf_mean_length = int(orf_table.length.mean())  # mean_length = 39
+    orf_table = orf_table[orf_table.length > orf_mean_length]
+    codons = findall("...", sequence, overlap=True)
+    relative_codon_frequencies = relative_frequencies(codons)
+    codons_by_orf = [findall("...", seq) for seq in orf_table.dna_sequence]
+    orf_table["mean_codon_frequency"] = [
+        mean_frequency(relative_codon_frequencies, codons) for codons in codons_by_orf
+    ]
+    orf_table["upstream_end_neighborhood_sequences"] = [
+        sequence_neighborhood(sequence, i, orf_mean_length)
+        for i in orf_table.upstream_end
+    ]
+    return orf_table
+
+
+if __name__ == "__main__":
+    orf_table = build_orf_table("data/NC_009641.fasta")
+    orf_table_complement = build_orf_table("data/NC_009641.fasta", complement=True)
+    orf_table = pd.concat([orf_table, orf_table_complement])
+    orf_table.to_csv("data/orf_table.tsv", sep="\t", index=False)
+
+# %%
