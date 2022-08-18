@@ -7,3 +7,4 @@
 - Length: 2878897 bp
 - Double-stranded: True
 - Circular: True
+# Identifing ORFs based on the Genome only

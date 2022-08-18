@@ -1,10 +1,9 @@
-#  %%
+#%%
 import re
 import collections
 import statistics
 import pandas as pd
 import matplotlib.pyplot as plt
-import math
 
 
 def read_fasta(filepath):
@@ -130,10 +129,19 @@ def sequence_neighborhood(sequence, position, offset):
     return sequence[position - offset : position + offset]
 
 
-def build_orf_table(filepath, complement=False):
-    sequence = read_fasta(filepath)
-    if complement:
-        sequence = reverse_complement(sequence)
+def flatten(list_of_sublists):
+    return [item for sublist in list_of_sublists for item in sublist]
+
+
+def ratio_dict(dict1, dict2):
+    return {k: dict1[k] / dict2[k] for k in dict1.keys()}
+
+
+def sort_dict_by_value(dictionary, reverse=False):
+    return dict(sorted(dictionary.items(), key=lambda item: item[1], reverse=reverse))
+
+
+def build_orf_table(sequence):
     stop_codon_positions = findall_indices("TAA|TAG|TGA", sequence)
     stop_codon_positions_by_frame = split_by_modulo(stop_codon_positions, 3)
     orf_table = pd.DataFrame()
@@ -156,17 +164,39 @@ def build_orf_table(filepath, complement=False):
     orf_table["mean_codon_frequency"] = [
         mean_frequency(relative_codon_frequencies, codons) for codons in codons_by_orf
     ]
-    orf_table["upstream_end_neighborhood_sequences"] = [
+    orf_table["upstream_end_neighborhood_sequence"] = [
         sequence_neighborhood(sequence, i, orf_mean_length)
         for i in orf_table.upstream_end
     ]
     return orf_table
 
 
+def kmer_analysis(sequence, orf_table, kmer_length):
+    kmers = findall("." * kmer_length, sequence, overlap=True)
+    kmer_counter = relative_frequencies(kmers)
+    neighborhood_kmers = [
+        findall("." * kmer_length, n, overlap=True)
+        for n in orf_table[orf_table.length >= 1000].upstream_end_neighborhood_sequence
+    ]
+    neighborhood_kmers = flatten(neighborhood_kmers)
+    neighborhood_kmer_counter = relative_frequencies(neighborhood_kmers)
+    kmer_ratio_dict = ratio_dict(neighborhood_kmer_counter, kmer_counter)
+    kmer_ratio_dict = sort_dict_by_value(kmer_ratio_dict, reverse=True)
+    orf_table["shine_dalgarno_candidate"] = [
+        findall_indices("GGAGG", seq)
+        for seq in orf_table.upstream_end_neighborhood_sequence
+    ]
+    return orf_table
+
+
 if __name__ == "__main__":
-    orf_table = build_orf_table("data/NC_009641.fasta")
-    orf_table_complement = build_orf_table("data/NC_009641.fasta", complement=True)
-    orf_table = pd.concat([orf_table, orf_table_complement])
-    orf_table.to_csv("data/orf_table.tsv", sep="\t", index=False)
+    sequence = read_fasta("data/NC_009641.fasta")
+    orf_table = build_orf_table(sequence)
+    # sequence_complement = reverse_complement(sequence)
+    # orf_table_complement = build_orf_table(sequence_complement)
+    # orf_table = pd.concat([orf_table, orf_table_complement])
+    # orf_table.to_csv("data/orf_table.tsv", sep="\t", index=False)
+    test = kmer_analysis(sequence, orf_table, 5)
+    # kmer_analysis(sequence_complement, orf_table_complement, 5)
 
 # %%
