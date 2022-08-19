@@ -13,6 +13,12 @@ def read_fasta(filepath):
     return sequence.replace("\n", "")
 
 
+def read_multifasta(filepath):
+    with open(filepath) as infile:
+        peptides = infile.readlines()
+    return [p.rstrip() for p in peptides if p[0] != ">"]
+
+
 def findall_indices(regex, sequence):
     return [match.start() for match in re.finditer(regex, sequence)]
 
@@ -126,6 +132,8 @@ def reverse_complement(sequence):
 
 
 def sequence_neighborhood(sequence, position, offset):
+    if offset > position:
+        offset = position
     return sequence[position - offset : position + offset]
 
 
@@ -182,9 +190,13 @@ def kmer_analysis(sequence, orf_table, kmer_length):
     neighborhood_kmer_counter = relative_frequencies(neighborhood_kmers)
     kmer_ratio_dict = ratio_dict(neighborhood_kmer_counter, kmer_counter)
     kmer_ratio_dict = sort_dict_by_value(kmer_ratio_dict, reverse=True)
-    orf_table["shine_dalgarno_candidate"] = [
-        findall_indices("GGAGG", seq)
-        for seq in orf_table.upstream_end_neighborhood_sequence
+    neighborhood_kmers_total = [
+        findall("." * kmer_length, n, overlap=True)
+        for n in orf_table.upstream_end_neighborhood_sequence
+    ]
+    orf_table["max_kmer_ratio"] = [
+        max([kmer_ratio_dict.get(key, 0) for key in kmer_list])
+        for kmer_list in neighborhood_kmers_total
     ]
     return orf_table
 
@@ -192,11 +204,17 @@ def kmer_analysis(sequence, orf_table, kmer_length):
 if __name__ == "__main__":
     sequence = read_fasta("data/NC_009641.fasta")
     orf_table = build_orf_table(sequence)
-    # sequence_complement = reverse_complement(sequence)
-    # orf_table_complement = build_orf_table(sequence_complement)
-    # orf_table = pd.concat([orf_table, orf_table_complement])
-    # orf_table.to_csv("data/orf_table.tsv", sep="\t", index=False)
-    test = kmer_analysis(sequence, orf_table, 5)
-    # kmer_analysis(sequence_complement, orf_table_complement, 5)
+    sequence_complement = reverse_complement(sequence)
+    orf_table_complement = build_orf_table(sequence_complement)
+    orf_table = kmer_analysis(sequence, orf_table, 5)
+    orf_table_complement = kmer_analysis(sequence_complement, orf_table_complement, 5)
+    orf_table = pd.concat([orf_table, orf_table_complement])
+    orf_table.to_csv("data/orf_table.tsv", sep="\t", index=False)
 
-# %%
+    peptides = read_multifasta("data/filtered_peptides.fasta")
+    checklist = [0 for _ in range(len(orf_table.amino_sequence))]
+    for i, seq in enumerate(orf_table.amino_sequence):
+        if any([pep in seq for pep in peptides]):
+            checklist[i] = 1
+    orf_table["peptide_found"] = checklist
+    orf_table.to_csv("data/orf_table.tsv", sep="\t", index=False)

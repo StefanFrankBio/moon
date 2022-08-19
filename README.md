@@ -8,3 +8,10 @@
 - Double-stranded: True
 - Circular: True
 # Identifing ORFs based on the Genome only
+# ToDo
+- Turn Peptide Mapping into function
+- Feature: Coverage of Blastn Results from related Genomes
+- Feature: Positive Selection
+- Feature: Distance between Shine Dalgarno Sequence and Startcodon
+- Feature: Type of Start Codon Likelihood?
+- 1200 Peptides in Dataset, only 843 found in ORFs. Different Starts? Invert Peptides and filter.
